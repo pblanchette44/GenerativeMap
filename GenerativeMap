@@ -1,0 +1,822 @@
+game theGame;
+
+void setup()
+{
+size(640,480);
+background(255);
+
+theGame = new game();
+
+}
+
+void draw()
+{
+  background(255);
+  //theGame = new game();
+  theGame.update();
+  
+}
+
+class game
+{
+  //declare objects
+  int selectedPlayer = -1;
+  int[] Forest = {int(random(100)),int(random(50))};
+  int seaSize[] = {int(random(12)),8,int(random(5))};
+  map theMap;
+  hud theHud;
+  player thePlayer;
+  player[] allPlayer = new player[2];
+
+  game()
+  {
+    theHud = new hud();
+    
+    //the map's argument's are (size,forest[numberOfRoot,density],obstacleDensity);
+    
+    theMap = new map(30,Forest,100,seaSize);
+
+    createPlayers();
+  }
+
+
+  void update()
+  {
+    theMap.display();
+    theHud.display();
+
+    for (int i=0; i < allPlayer.length; i++)
+    {
+      if (allPlayer[i]!= null)
+      {
+        allPlayer[i].display();
+      }
+    }
+    
+  }
+
+  void createPlayers()
+  {
+    //inits player for the number of player specified
+    for (int i =0; i < allPlayer.length; i++)
+    {
+      player temp;
+      PVector tempPosition = new PVector(int(random(theMap.theSize-1)),int(random(theMap.theSize-1)));
+      while(theMap.theArray[int(tempPosition.x)][int(tempPosition.y)].getElementId() != -1)
+      {
+       tempPosition = new PVector(int(random(theMap.theSize-1)),int(random(theMap.theSize-1))); 
+      }
+
+      temp =  new player(theMap.getTile(int(tempPosition.x), int(tempPosition.y)), theMap.displaySize/theMap.theSize, tempPosition,i);
+      allPlayer[i] = temp;
+
+      theMap.theArray[int(temp.mapPosition.x)][int(temp.mapPosition.y)].setElement(1);
+      theMap.theArray[int(temp.mapPosition.x)][int(temp.mapPosition.y)].setElementId(i);
+    }
+    //increments the size of the PlayerArray
+    //copy the content of the first array into it
+    //appends a new player in it
+  }
+
+  void endTurn()
+  {
+    for (int i=0; i < allPlayer.length; i++)
+    {
+      allPlayer[i].moveRandom();
+    }
+    delay(50);
+  }
+}
+class map
+{
+
+  int theSize;
+  int displaySize = 420;
+  int tileOffset = 50;
+  int obstacleDensity;
+  int[] theForest;
+
+  tile[][] theArray;
+  PVector obstacleLocation[];
+
+
+  map(int size, int[] forest, int _obstacleDensity, int[] seaSize)
+  {
+    obstacleDensity = _obstacleDensity;
+    theSize = size;
+
+    theArray = new tile[size][size];
+
+    int[] theForest = {
+      forest[0], forest[1]
+    }; 
+
+    // generate the terrain tiles;
+    for (int i =0; i< size; i++)
+    {
+      for (int j =0; j<size; j++)
+      {
+        PVector temp = new PVector(((displaySize/size)*i)+tileOffset, ((displaySize/size)*j)+tileOffset);
+        PVector mapPos = new PVector(i, j);
+
+        tile theTemp = new tile(temp, displaySize/size, mapPos);
+
+        theArray[i][j] = theTemp;
+      }
+    }
+
+    //generate obstacles
+    generateWater(seaSize);
+
+    obstacleLocation = new PVector[obstacleDensity];
+    generateObstacle(obstacleDensity);
+
+    generateForest(findRootForest(), theForest[0], theForest[1]);
+  }
+
+
+
+  PVector getTile(int i, int j)
+  {
+    {    
+      tile temp;
+      temp = theArray[i][j];
+
+      return temp.position;
+    }
+  }
+
+  void display()
+  {
+    for (int i =0; i< theSize; i++)
+    {
+      for (int j =0; j<theSize; j++)
+      {
+        theArray[i][j].display();
+      }
+    }
+  }
+
+
+
+  //ObstacleMethod, basicaly is a random distribution of grey square that are uncrossable by the player, they can be mountains or even holes...
+  // It's a first iteration of the environment setup I want for this map generator.
+
+  void generateObstacle(int obstacleDensity)
+  {
+    for (int i =0; i < obstacleLocation.length; i ++)
+    {
+      PVector tempLoc = new PVector(random(theSize-1), random(theSize-1));
+
+      while (theArray[int (tempLoc.x)][int(tempLoc.y)].getElementId() != -1)
+      {
+        tempLoc = new PVector(random(theSize-1), random(theSize-1));
+      }
+
+      obstacleLocation[i] = tempLoc;
+    }
+
+    for (int a = 0; a < obstacleLocation.length; a++)
+    {
+      theArray[int(obstacleLocation[a].x)][int(obstacleLocation[a].y)].setObstacle();
+    }
+  }
+
+
+
+
+  //ForestMethods
+
+  //Basicaly, on cherche a placer des node rootForest sur la map, autours desquels on place des cases forêts
+  //puisque qu'il y a un max de 8 case autour d'une root, si on entre une densité superieur a 8, on doit deplacer la root de la foret pour
+  //Agrandir la superficie de la foret.
+
+
+
+  PVector findRootForest()
+  {
+    //Selection of a rootForest
+    PVector rootForest;
+    rootForest = new PVector(int(random(theSize)), int(random(theSize))); 
+
+    //validation of empty terrain
+    while (theArray[int (rootForest.x)][int(rootForest.y)].getElementId() != -1)
+    {
+      rootForest = new PVector(int(random(theSize)), int(random(theSize)));
+    }
+
+    //set the root forest
+    theArray[int(rootForest.x)][int(rootForest.y)].setElementId(4);
+    return rootForest;
+  }
+
+
+
+  void generateForest(PVector inputForest, int forestCount, int density)
+  { 
+    //init stuff
+    PVector rootForest; 
+    rootForest = inputForest;
+    PVector tempRand;
+
+
+    //iterate over the density integer
+    for (int i=0; i < density; i++)
+    {
+
+      tempRand = new PVector(int(random(3)-1+rootForest.x), (int(random(3)-1+rootForest.y)));
+
+      //validation of out of bounds
+      while (tempRand.x < 0 || tempRand.x > theSize-1 || tempRand.y < 0 || tempRand.y > theSize-1)
+      {
+        tempRand = new PVector(int(random(3)-1+rootForest.x), (int(random(3)-1+rootForest.y)));
+      }
+
+      //validation of emptyTerrain, you cannot place a forest on a forest, or on an obstacle
+
+      if (theArray[int(tempRand.x)][int(tempRand.y)].getElementId() == -1)
+      {
+
+        //placing forest
+        theArray[int(tempRand.x)][int(tempRand.y)].setElementId(4);
+
+        //there's a change it becomes the new rootForest
+        if (int(random(4)) <= 1)
+        {
+          rootForest = tempRand;
+        }
+      }
+    }
+
+    //recursive part of the function
+    //Decrementing the forestCount
+    forestCount -= 1;
+
+
+    //call on the recursive function if there are forest count left.
+    if (forestCount > 0)
+    {
+      generateForest(findRootForest(), forestCount, density);
+    }
+  }
+
+
+  //Water function
+  //To make it easier to set up, the water function is called before the river and obstacle function.
+  //basicaly, the water distribution can be made according to various "water identity", either a sea, a lake or a river.
+  //
+  //a sea is a water body that is touching at least one corner of the map (up to 4 if it's an island).
+  //a river is a body of water that crosses the map from one corner to the other and has a variable width.
+  //a lake is a body of water that isn't touching any border of the map.
+  //
+
+  void generateWater( int[] seaSize)
+  {
+    //generateWater 
+    for (int i =1; i <= seaSize[2]; i++)
+    {
+      generateSea(seaSize[0], seaSize[1], i);
+    }
+  }
+
+  //for a more triangular sea
+  void generateSea(int seaRoot, int seaAdvancement, int orientation)
+  {
+
+    int seaOffset = int(random(theSize/2));
+    int direction[] = new int [2];
+    int directionOffset[] = {
+      0, 0
+    };
+
+    switch(orientation)
+    {
+    case 1:
+      direction[0] = 1;
+      direction[1] = 1;
+      directionOffset[0] = 0;
+      break;
+    case 2:
+      direction[0] = 1;
+      direction[1] = 1;
+      directionOffset[1] = 0;
+      break;
+    case 3:
+      direction[0] = -1;
+      directionOffset[0] = theSize;
+      direction[1] = 1;
+      break;
+    case 4:
+      direction[0] = 1;
+      direction[1] = -1;
+      directionOffset[1] = theSize;
+      break;
+    }
+
+    if (orientation == 1|| orientation == 3)
+    {
+      for (int advancement = 0; advancement < seaAdvancement; advancement ++)
+      {
+        for (int i =0; i < 2*seaRoot-advancement*2; i++)
+        { 
+          PVector tempVec = new PVector(advancement*direction[0]+directionOffset[0], i+seaOffset+advancement*direction[1]+directionOffset[1]);
+
+          if (tempVec.x < theSize && tempVec.x >= 0 && tempVec.y < theSize && tempVec.y >= 0)
+          {
+            theArray[int(tempVec.x)][int(tempVec.y)].setElementId(5);
+            for (int x =-1; x < 2; x ++)
+            {
+              for (int y = -1; y < 2; y ++)
+              {
+                if(tempVec.x+x>=0 && tempVec.x+x < theSize && tempVec.y+y >=0 && tempVec.y+y < theSize)
+                {
+                  if(theArray[int(tempVec.x+x)][int(tempVec.y+y)].getElementId() == -1)
+                  {
+                  theArray[int(tempVec.x+x)][int(tempVec.y+y)].setElementId(6);
+                  }  
+                }
+              }
+            }
+          }
+        }
+      }
+    } else if (orientation == 2 || orientation == 4)
+    {
+      for (int advancement = 0; advancement<seaAdvancement; advancement ++)
+      {
+        for (int i = 0; i < 2*seaRoot-advancement*2; i++)
+        {
+          PVector tempVec = new PVector(i+seaOffset*direction[0]+advancement, directionOffset[1]+advancement*direction[1]);
+
+          if (tempVec.x < theSize && tempVec.x >= 0 && tempVec.y < theSize && tempVec.y >= 0)
+          {
+            theArray[int(tempVec.x)][int(tempVec.y)].setElementId(5);
+            
+            for (int x =-1; x < 2; x ++)
+            {
+              for (int y = -1; y < 2; y ++)
+              {
+                if(tempVec.x+x>=0 && tempVec.x+x < theSize && tempVec.y+y >=0 && tempVec.y+y < theSize)
+                {
+                  if(theArray[int(tempVec.x+x)][int(tempVec.y+y)].getElementId() == -1)
+                  {
+                  theArray[int(tempVec.x+x)][int(tempVec.y+y)].setElementId(6);
+                  }  
+              }
+              }
+            }
+            
+          }
+        }
+      }
+    }
+  }
+}
+
+class hud
+{  
+  int current;
+
+  hud()
+  { 
+    current = -1;
+    display();
+  }
+
+  void display()
+  {
+    rect(588, current*26, 75, 25);
+    fill(0);
+    textSize(15); 
+    text("Attack", 590, 50);
+    text("Move", 590, 75);
+    text("Info", 590, 100);
+    text("Select", 590, 125);
+    fill(255);
+  }
+
+  int getCurrent()
+  {
+    return current;
+  }
+
+  void setCurrent(int input)
+  {
+    current = input;
+  }
+}
+
+
+void keyPressed()
+{
+  if (key =='a')
+  {
+    theGame.theHud.setCurrent(1);
+     if(theGame.selectedPlayer!= -1)
+    {
+     theGame.allPlayer[theGame.selectedPlayer].clearAdjacent(); 
+    }
+  } else if (key =='m')
+  {
+    theGame.theHud.setCurrent(2);
+    if(theGame.selectedPlayer!= -1)
+    {
+     theGame.allPlayer[theGame.selectedPlayer].getAdjacent(); 
+    }
+  } else if (key == 'i')
+  {
+    theGame.theHud.setCurrent(3);
+    if(theGame.selectedPlayer!= -1)
+    {
+     theGame.allPlayer[theGame.selectedPlayer].clearAdjacent(); 
+    }
+    
+  } else if (key =='s')
+  {
+    theGame.theHud.setCurrent(4);
+     if(theGame.selectedPlayer!= -1)
+    {
+     theGame.allPlayer[theGame.selectedPlayer].clearAdjacent(); 
+    }
+  } else {
+    theGame.theHud.setCurrent(-1);
+     if(theGame.selectedPlayer!= -1)
+    {
+     theGame.allPlayer[theGame.selectedPlayer].clearAdjacent(); 
+    }
+  }
+}
+class player
+{
+
+  int[] playerInfo = {
+    -1, 2, 5
+  };
+  String[] playerInfoText = {
+    "Infantry", "Health", "Action points"
+  };
+
+  int selection = 1;
+  int playerId;
+  PVector position;
+  int theSize;
+  PVector mapPosition;
+
+  tile[] adjacentTile;
+
+  player(PVector pos, int size, PVector _mapPosition, int _theId)
+  {
+
+    playerId = _theId;
+    theSize = size;
+    //position id
+    mapPosition = _mapPosition;
+    //position in cartesian date
+    position = pos;
+    adjacentTile = new tile[9];
+    display();
+  }
+
+  void display()
+  {
+    beginShape();
+    strokeWeight(4*selection);
+    vertex(position.x-theSize/2, position.y-theSize/2);
+    vertex(position.x+theSize/2, position.y-theSize/2);
+    vertex(position.x+theSize/2, position.y+theSize/2);
+    vertex(position.x-theSize/2, position.y+theSize/2);
+    vertex(position.x-theSize/2, position.y-theSize/2);
+    endShape();
+    if (selection == 2)
+    {
+      displayPlayerInfo();
+    }
+  }
+
+  void displayPlayerInfo()
+  {
+
+    //when you select that tile, you get a box on the side that display a list of info on it's content.
+    //example, if it's a character, you get to see it's hp and move points.
+    fill(0);
+
+    for (int i =0; i < playerInfo.length; i++)
+    {
+      if (playerInfo[i] == -1)
+      {
+        text(playerInfoText[i], 460, i*25+50);
+      } else {
+        text(playerInfoText[i] + " " + playerInfo[i], 460, i*25+50);
+      }
+    }
+    fill(255);
+  }
+
+
+  void clearAdjacent()
+  {
+    for (int a =0; a< adjacentTile.length; a++)
+    {
+      if (adjacentTile[a] != null)
+      {
+        adjacentTile[a].setElement(0);
+        adjacentTile[a].setElementId(-1);
+      }
+    }
+  }
+
+  void getAdjacent()
+  {
+    //clearing the display
+    clearAdjacent();
+
+    int count = 0;
+
+    for (int i = int (mapPosition.x-1); i<= int(mapPosition.x+1); i++)
+    {
+      for (int j = int (mapPosition.y-1); j<= int(mapPosition.y+1); j++)
+      {
+        if (i >=0 && i < theGame.theMap.theSize && j >= 0 && j < theGame.theMap.theSize && theGame.theMap.theArray[i][j].getElementId()== -1)
+        {
+          adjacentTile[count] = theGame.theMap.theArray[i][j];
+          count +=1;
+        }
+      }
+    }
+
+    for (int a =0; a< count; a++)
+    {
+      adjacentTile[a].setFill(150);
+    }
+  } 
+
+
+
+  void moveRandom()
+  {
+    theGame.selectedPlayer = this.playerId; 
+
+    PVector randomMotion = new PVector
+      (
+      int((random(3)-1)+this.mapPosition.x),
+      
+      int((random(3)-1)+this.mapPosition.y)
+
+    ); 
+    moveFunction(randomMotion);
+    }
+
+    //Getters
+
+    PVector getMapPosition()
+    {
+      return mapPosition;
+    }
+
+  int getElementId()
+  {
+    return playerId;
+  }
+
+
+  //Setters
+
+  void setPosition(PVector newPosition, PVector newMapPosition)
+  {
+    position = newPosition;
+    mapPosition = newMapPosition;
+  }
+
+  void setSelection(boolean _selection)
+  {
+    if (_selection)
+    {
+      selection = 2;
+    } else
+    {
+      selection = 1;
+    }
+  }
+}
+void mousePressed()
+{
+  PVector clickedTile = getTileId();
+
+  if (theGame.theHud.getCurrent() == 2 && theGame.selectedPlayer != -1)
+  {
+    moveFunction(clickedTile);
+  } else if (theGame.theHud.getCurrent() == 3)
+  {
+    getTileInfo(clickedTile);
+  } else if (theGame.theHud.getCurrent() == 4)
+  {
+    theGame.selectedPlayer=selectFunction(clickedTile);
+  }
+}
+
+void moveFunction(PVector clickedTile)
+{
+  //move function
+  //get the id of the clicked tile
+  //check if there's no element on it
+  if (clickedTile.x < theGame.theMap.theSize && clickedTile.y < theGame.theMap.theSize)
+  {
+    if (theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElementId() == -1 && theGame.selectedPlayer !=-1)
+    {
+      //get it's position 
+      PVector tempVec;
+
+      tempVec = theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].position;
+      
+      if (clickedTile.dist(theGame.allPlayer[theGame.selectedPlayer].mapPosition)< 2)
+      {
+        //set element from previous tile to 0
+        theGame.theMap.theArray[int(theGame.allPlayer[theGame.selectedPlayer].getMapPosition().x)][int(theGame.allPlayer[theGame.selectedPlayer].getMapPosition().y)].setElement(0);
+        //set elementId from previous tile to -1;
+        theGame.theMap.theArray[int(theGame.allPlayer[theGame.selectedPlayer].getMapPosition().x)][int(theGame.allPlayer[theGame.selectedPlayer].getMapPosition().y)].setElementId(-1);
+
+        //set player position to tile position
+        theGame.allPlayer[theGame.selectedPlayer].setPosition(tempVec, clickedTile);
+        //set element of new tile to 1
+        theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].setElement(1);
+        //set the elementId of new tile to thePlayer Id
+        theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].setElementId(theGame.allPlayer[theGame.selectedPlayer].getElementId());
+
+        //display the new possible moves
+        theGame.allPlayer[theGame.selectedPlayer].getAdjacent();
+      }
+    } else if (theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElement() != 0)
+    {
+      System.out.println("There's an obstacle sorry bud");
+    }
+  }
+}
+
+
+int selectFunction(PVector clickedTile)
+{
+  int theId = -1;
+  //get the id of the clickedTile
+  if (clickedTile.x < theGame.theMap.theSize && clickedTile.y < theGame.theMap.theSize)
+  {
+    if(theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElement()!= 0)
+    {  
+      // if there is find it in the unit database
+      theId = theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElementId(); 
+      // (1)adjust all selection to false;
+      // (2)then adjust the selected element to 1;  
+      for (int i =0; i < theGame.allPlayer.length; i++)
+      {
+        theGame.allPlayer[i].setSelection(false);
+      }
+      //set the selected Player as Selected.
+      theGame.allPlayer[theId].setSelection(true);
+      //clear the info box on the right
+      //call on the display Player info Function.
+    } else {
+      // just adjust all to 0
+      for (int i =0; i < theGame.allPlayer.length; i++)
+      {
+        theGame.allPlayer[i].setSelection(false);
+      }
+    }
+  }
+  return theId;
+}
+
+
+void getTileInfo(PVector clickedTile)
+{
+  //info function
+  if (theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElement() == 0)
+  {
+    System.out.println("Tile is empty");
+    System.out.println("The id of the element is" + theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElementId());
+  } else if (theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElement() == 1)
+  {
+    System.out.println("Tile has a player on it");
+    System.out.println("The id of the element is" + theGame.theMap.theArray[int(clickedTile.x)][int(clickedTile.y)].getElementId());
+  }
+}
+
+PVector getTileId()
+{
+  PVector mousePos = new PVector(mouseX, mouseY);
+  PVector tileClicked = new PVector(0, 0);
+
+  int minScale = theGame.theMap.tileOffset-(theGame.theMap.displaySize/theGame.theMap.theSize)/2;
+
+  tileClicked.x = int(map(mouseX, minScale, theGame.theMap.displaySize+minScale, 0, theGame.theMap.theSize));
+  tileClicked.y = int(map(mouseY, minScale, theGame.theMap.displaySize+minScale, 0, theGame.theMap.theSize));
+
+  System.out.println("you clicked on the tile" + tileClicked);
+  return tileClicked;
+}
+class tile
+{
+  PVector position;
+  PVector mapPos;
+  int theSize;
+
+  //Element is a variable that is = 0 if the tile is empty and 1 if there's something on it
+  int element;
+
+  //elementID
+  //-1 terrain
+  // 0 and 1 are player
+  // 2 obstacle
+  // 5 water
+  // 4 forest
+
+    int elementId = -1;
+
+
+  int fill = color(76,224,63);
+
+  tile(PVector pos, int size, PVector map)
+  {
+    element = 0;
+    mapPos = map;
+    position = pos;
+    theSize = size;
+    display();
+  }
+
+  void display()
+  {
+    beginShape();
+    strokeWeight(0.2);
+    fill(fill);
+    vertex(position.x-theSize/2, position.y+theSize/2);
+    vertex(position.x-theSize/2, position.y-theSize/2);
+    vertex(position.x+theSize/2, position.y-theSize/2);
+    vertex(position.x+theSize/2, position.y+theSize/2); 
+    vertex(position.x-theSize/2, position.y+theSize/2);   
+    endShape();
+  }
+
+  //Setters
+
+  void setFill(int inputColor)
+  {
+    fill = inputColor;
+  }
+
+  void setElement(int elementId)
+  {
+    element = elementId;
+    System.out.println("Tile" + mapPos + "set to " + element);
+  }
+  void setElementId(int _elementId)
+  {
+    elementId = _elementId;
+    if(elementId == -1)
+    {
+      setElement(-1);
+      setFill(color(76,224,63));
+    }
+    
+    if (elementId == 4)
+    {
+      setElement(1);
+      setFill(color(25, 191, 10));
+    } else if (elementId == 5)
+    {
+      setFill(color(0, 0, 200));
+      setElement(1);
+
+    } else if (elementId == 6)
+    {
+      setFill(color(246, 255, 0));
+    }
+  }
+
+  void setObstacle()
+  {
+    //set the element of the tile to an obstacle;
+    element = 1;
+    elementId = 2; 
+    this.setFill(color(148,110,40));
+  }
+
+  //Getter
+  PVector getMapPos()
+  {
+    return mapPos;
+  }
+
+  int getElementId()
+  {
+    return elementId;
+  }
+
+
+  int getElement()
+  {
+    return element;
+  }
+  
+}
+
+
+
